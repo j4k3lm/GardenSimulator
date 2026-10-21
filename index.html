@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python-Based Garden Simulator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="min-h-screen p-4 overflow-x-hidden">
+  <header class="w-full max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 pb-2 border-b border-[#43533c]/40">
+    <div>
+      <h1 class="text-2xl font-extrabold tracking-tight text-emerald-100">Python-Based Garden Simulator</h1>
+      <p class="text-xs text-emerald-300/80 font-medium">v0.7.0 · SDG 2, 13, 15 · <span id="status">Loading Python…</span></p>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="glass-panel px-4 py-2 rounded-xl text-right"><span class="label">DAY</span><div class="text-lg font-extrabold" id="day-counter">1</div></div>
+      <div class="glass-panel px-4 py-2 rounded-xl text-right"><span class="label">SCORE</span><div class="text-lg font-extrabold text-emerald-300" id="stewardship-counter">0%</div></div>
+    </div>
+  </header>
+
+  <main class="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4">
+    <!-- LEFT: RESOURCES -->
+    <section id="resources-section" class="lg:col-span-3 glass-panel rounded-2xl p-4 locked self-start">
+      <h2 class="panel-title"><i data-lucide="database" class="w-4 h-4"></i> Resource Storage</h2>
+      <div class="space-y-4" id="res-bars"></div>
+    </section>
+
+    <!-- CENTER -->
+    <section class="lg:col-span-6 flex flex-col gap-4">
+      <div class="flex bg-[#192218] p-1.5 rounded-xl border border-emerald-800/40 w-fit">
+        <button onclick="switchTab('game')" id="tab-game" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-[#283623] text-emerald-100">Interactive Sanctuary</button>
+        <button onclick="switchTab('code')" id="tab-code" class="px-4 py-1.5 rounded-lg text-xs font-bold text-emerald-400/80 hover:text-emerald-100">Student Code Editor</button>
+      </div>
+
+      <div id="view-game" class="glass-panel rounded-2xl p-6 min-h-[380px] locked">
+        <div class="flex items-center justify-between mb-4 gap-2">
+          <div>
+            <h2 class="text-lg font-bold text-white">Sanctuary Garden Grid <span class="code-font text-xs text-emerald-400">grid[row][col]</span></h2>
+            <p class="text-xs text-emerald-300">Click soil to plant · click a ripe plant to harvest.</p>
+          </div>
+          <select id="crop-selector" class="bg-[#1b2219] border border-emerald-700 text-emerald-100 text-sm rounded-xl px-3 py-2"></select>
+        </div>
+        <div id="garden-grid" class="grid grid-cols-5 gap-3"></div>
+        <div class="flex gap-2 mt-4">
+          <button onclick="callPy('next_day()')" class="btn bg-emerald-600 hover:bg-emerald-500"><i data-lucide="sun" class="w-4 h-4"></i> Next Day (Dequeue)</button>
+          <button onclick="triggerUndo()" class="btn bg-[#2a3825] border border-emerald-800"><i data-lucide="undo-2" class="w-4 h-4"></i> Undo (Pop)</button>
+        </div>
+      </div>
+
+      <div id="view-code" class="glass-panel rounded-2xl p-6 flex flex-col flex-grow hidden">
+        <h2 class="font-bold mb-3 flex items-center gap-2"><i data-lucide="code" class="w-5 h-5 text-emerald-400"></i> Student Code Editor (Lab)</h2>
+        <select id="topic-selector" onchange="loadTopic()" class="w-full bg-[#1b2219] border border-emerald-700 rounded-xl p-3 mb-3 text-sm"></select>
+        <textarea id="code-editor" oninput="saveCode()" class="flex-1 min-h-[320px] bg-[#0a0f0a] border border-emerald-800 rounded-xl p-4 code-font text-sm leading-relaxed" spellcheck="false"></textarea>
+        <div class="flex gap-2 mt-4">
+          <button onclick="runPythonCode()" class="btn flex-1 justify-center bg-emerald-600 hover:bg-emerald-500"><i data-lucide="play" class="w-4 h-4"></i> Run This Topic</button>
+          <button onclick="runAll()" class="btn bg-amber-700 hover:bg-amber-600"><i data-lucide="fast-forward" class="w-4 h-4"></i> Run All 1–7</button>
+          <button onclick="resetTopic()" class="btn bg-[#2a3825] border border-emerald-800"><i data-lucide="rotate-ccw" class="w-4 h-4"></i></button>
+        </div>
+        <div id="output-console" class="mt-4 bg-black/70 border border-emerald-900 rounded-xl p-4 text-xs max-h-48 overflow-auto code-font whitespace-pre-wrap"></div>
+      </div>
+    </section>
+
+    <!-- RIGHT -->
+    <section class="lg:col-span-3 flex flex-col gap-4">
+      <div id="climate-queue-panel" class="glass-panel rounded-2xl p-4 locked">
+        <h3 class="panel-title"><i data-lucide="cloud-lightning" class="w-4 h-4"></i> Climate Queue (FIFO)</h3>
+        <div id="climate-queue" class="space-y-2 text-xs"></div>
+      </div>
+      <div id="stack-panel" class="glass-panel rounded-2xl p-4 locked">
+        <h3 class="panel-title"><i data-lucide="history" class="w-4 h-4"></i> Action History (Stack)</h3>
+        <div id="action-stack" class="space-y-2 text-xs max-h-48 overflow-auto"></div>
+      </div>
+    </section>
+  </main>
+
+  <section id="tree-panel" class="w-full max-w-7xl mx-auto glass-panel rounded-2xl p-4 mt-4 locked">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+      <h3 class="panel-title !mb-0"><i data-lucide="git-fork" class="w-4 h-4"></i> Hierarchical Tree <span id="tree-title" class="text-xs text-emerald-300 font-normal">(Garden)</span></h3>
+      <p class="text-xs text-emerald-300">Size <b id="t-size">1</b> · Height <b id="t-height">0</b> · root = top, leaf = no children</p>
+    </div>
+    <div class="overflow-x-auto bg-black/30 rounded-xl p-2"><svg id="tree-svg" height="120"></svg></div>
+    <div id="trav-controls" class="mt-3 locked">
+      <div class="flex flex-wrap gap-2">
+        <button onclick="runTraversal('bfs')" class="btn bg-sky-700">BFS · Level order (Queue)</button>
+        <button onclick="runTraversal('preorder')" class="btn bg-emerald-700">Preorder · Root-L-R</button>
+        <button onclick="runTraversal('inorder')" class="btn bg-amber-700">Inorder · L-Root-R</button>
+        <button onclick="runTraversal('postorder')" class="btn bg-rose-700">Postorder · L-R-Root</button>
+        <button onclick="callPy('tree.sync()')" class="btn bg-[#2a3825] border border-emerald-800">Garden Tree</button>
+        <button onclick="callPy('show_demo()')" class="btn bg-[#2a3825] border border-emerald-800">Lesson Example A–F</button>
+      </div>
+      <p id="t-out" class="code-font text-sm bg-black/40 rounded-xl p-3 mt-3 min-h-[2.5rem]"></p>
+      <p id="t-check" class="text-xs mt-1"></p>
+    </div>
+  </section>
+  <section id="bst-panel" class="w-full max-w-7xl mx-auto glass-panel rounded-2xl p-4 mt-4 locked">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+      <h3 class="panel-title !mb-0"><i data-lucide="search" class="w-4 h-4"></i> Binary Search Tree <span id="bst-title" class="text-xs text-emerald-300 font-normal"></span></h3>
+      <p class="text-xs text-emerald-300">Size <b id="b-size">0</b> · Height <b id="b-height">0</b> · rule: left &lt; node &lt; right</p>
+    </div>
+    <div class="overflow-x-auto bg-black/30 rounded-xl p-2"><svg id="bst-svg" height="60"></svg></div>
+    <div class="flex flex-wrap items-center gap-2 mt-3">
+      <input id="bst-key" type="number" min="0" max="99" value="25" class="w-20 bg-[#1b2219] border border-emerald-700 rounded-xl px-3 py-2 text-sm">
+      <button onclick="bstOp('insert')" class="btn bg-emerald-700">Insert</button>
+      <button onclick="bstOp('search')" class="btn bg-sky-700">Search</button>
+      <button onclick="bstOp('delete')" class="btn bg-rose-800">Delete</button>
+      <span class="text-emerald-700">|</span>
+      <button onclick="runBST('inorder')" class="btn bg-amber-700">Inorder (sorted!)</button>
+      <button onclick="runBST('preorder')" class="btn bg-emerald-700">Preorder</button>
+      <button onclick="runBST('postorder')" class="btn bg-rose-700">Postorder</button>
+      <span class="text-emerald-700">|</span>
+      <button onclick="showBST('garden')" class="btn bg-[#2a3825] border border-emerald-800">Garden tree</button>
+      <button onclick="showBST('demo')" class="btn bg-[#2a3825] border border-emerald-800">Demo tree</button>
+      <button onclick="callPy('reset_demo()')" class="btn bg-[#2a3825] border border-emerald-800">Reset demo</button>
+    </div>
+    <p id="b-out" class="code-font text-sm bg-black/40 rounded-xl p-3 mt-3 min-h-[2.5rem]"></p>
+    <p id="b-check" class="text-xs mt-1"></p>
+  </section>
+
+  <script src="js/templates.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
